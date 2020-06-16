@@ -1,6 +1,5 @@
 ---
 title: "Housing Project"
-author: "Amit Anchalia, Raghav Chadha, Srishti Kakkar, Subranshu Mohanty"
 output:
   html_document: default
   pdf_document: default
