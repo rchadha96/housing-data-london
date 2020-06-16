@@ -8,4 +8,7 @@ as leased or freehold. It can have two to five bedrooms with one or more bathroo
 with or without a central heating system and different types of garage space. All these feature can have impact
 on the pricing of a house along with its location or which borough it is in. 
 
+# EDA
+![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(1).png)
+
 
