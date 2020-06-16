@@ -1,0 +1,565 @@
+---
+title: "Housing Project"
+author: "Amit Anchalia, Raghav Chadha, Srishti Kakkar, Subranshu Mohanty"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, results="hide"} 
+## Loading all the library 
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(caTools)))
+#suppressWarnings(suppressMessages(install.packages("rprintf")))
+#suppressWarnings(suppressMessages(install.packages("glmnet")))
+suppressWarnings(suppressMessages(library(rprintf)))
+suppressWarnings(suppressMessages(library(randomForest)))
+suppressWarnings(suppressMessages(library(e1071)))
+suppressWarnings(suppressMessages(library(MASS)))
+suppressWarnings(suppressMessages(library(glmnet)))
+
+## Related to Geography
+suppressWarnings(suppressMessages(library(rgdal)))
+suppressWarnings(suppressMessages(library(rgeos)))
+
+## Related to visualization
+suppressWarnings(suppressMessages(library(ggplot2)))
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(viridis)))
+suppressWarnings(suppressMessages(library(plotly)))
+suppressWarnings(suppressMessages(library(gridExtra)))
+
+## Related to parameter tuning 
+suppressWarnings(suppressMessages(library(caret)))
+
+```
+
+### Introduction
+
+<p align="justify">
+The objective of this project was to analyze the price of a house across the Boroughs of London. The analysis involves using visualization to understand the effect of different features on the price of a house and creating an optimal model to predict the price of a house. As per the data, houses can be as old as 106+ years (pre-world war 1) and ranging from price as low as 8500 to as high as 850000 pounds. The houses are categorized as leased or freehold. It can have two to five bedrooms with one or more bathroom. Further, there are houses with or without a central heating system and different types of garage space. All these feature can have impact on the pricing of a house along with its location or which borough it is in. Different types of houses like detached, Bangalow, or flat with the different features will have different prices too.
+</p>
+
+``` {r echo=FALSE, results="hide"}
+df <- read.csv('../dataset/DataScienceProj.csv')
+```
+
+``` {r echo=FALSE, results="hide"}
+housing <- data.frame(df)
+head(housing)
+```
+
+
+```{r echo=FALSE, results="hide"}
+
+sum(is.na(housing))
+
+```
+
+### Methodology
+
+#### Data Cleaning 
+
+<p align="justify">
+Before starting to analyze the data through visualization, it is important to clean the data. Any type of error or out of range or missing value in the data has to be identified and if there is any error it needs to be imputed the data. Any missing need to be replaced. After looking through data, no missing value was found though there are lots of out of range value for the proportion of residents retired which goes up to 900.   
+</p>
+<p align="justify">
+The Data contain more than 12.5k house details with 29 features and a response variable ‘Purprice’ which is the price of the house, few of the features were encoded or have dummy value. Using a function ‘Dummy2Factor’, it was converted to factors and then combined as a single column. The variable Age and Type of a house, Garage Space, and Number of Bedrooms are among those variables. After this process number of features was reduced to 19. Few other columns Tenfree (Leased/freehold houses), CenHeat (with or without central heating system), BathTwo (one or more bathrooms), NewPropD (New or old properties) were converted from integer to factor for ease of analysis later. No imputation was carried out as the data was clean with no missing or corrupted values except for one column RetiPct (proportion of residents retired).
+</p>
+
+
+``` {r echo=FALSE, results="hide"}
+Dummy2Factor <- function(mat,lev1="Level1") {
+  mat <- as.matrix(mat)
+  factor((mat %*% (1:ncol(mat))) + 1,
+         labels = c(lev1, colnames(mat)))
+}
+
+```
+
+
+``` {r echo=FALSE, results="hide"}
+Age      <- Dummy2Factor(housing[,5:9],"PreWW1")
+Type     <- Dummy2Factor(housing[,10:12],"TypBnglw")
+Garage   <- Dummy2Factor(housing[,13:14],"HardStnd")
+Bedrooms <- Dummy2Factor(housing[,18:21],"BedOne")
+
+MyData   <- data.frame(housing[,c(2:4,15:17,22:28, 30:31)],Age,Type,Garage,Bedrooms)
+
+MyData$Tenfree  <- as.factor(MyData$Tenfree)
+MyData$CenHeat  <- as.factor(MyData$CenHeat)
+MyData$BathTwo  <- as.factor(MyData$BathTwo)
+MyData$NewPropD <- as.factor(MyData$NewPropD)
+
+#write.csv(MyData, "../dataset/housing_data_cleaned.csv")
+
+glimpse(MyData)
+```
+
+#### Data Analysis & Visualization 
+
+
+<p align="justify">
+The variable doesn’t seem to have any strong correlation except a few variables like NoCarHh (Proportion of household without a car) & CarspP (Cars per person in the neighborhood) and FlorArea (Floor Area) & Purprice (House price). The neighborhood with less number of cars per person can definitely have more households with no cars and it’s obvious larger the floor area, higher the price of the house. 
+</p>
+
+
+
+```{r echo=FALSE, results="hide"}
+
+## Finding the correlation matrix to understand if there is any relationship between features
+corr_mat <- cor(MyData[,c(1:3,8:15)]) 
+corr_mat <- ifelse( (corr_mat > 0.6 | corr_mat < -0.6) , 1, 0)
+corr_mat
+
+```
+
+ 
+
+```{r echo=FALSE, results="hide"}
+
+
+## Creating a quantile for price t understand the disperson of price across the london
+PriceQuantile <- as.factor(as.numeric(cut(MyData$Purprice, quantile(MyData$Purprice, breaks = 1/4*c(1:4)), labels=F, include.lowest = T)))
+levels(PriceQuantile) <- c("75%-100%", "50%-75%", "25%-50%", " 0%-25%")
+
+
+## Creating a spatial vector object of london boroughs 
+LB <- readOGR(dsn="../dataset/LondonBoroughs",layer="LondonBoroughs",stringsAsFactors=FALSE)
+LH <- SpatialPointsDataFrame(MyData[,1:2],MyData)
+proj4string(LH) <- CRS(proj4string(LB))
+LHLB <- over(LH,LB)   # points first, then polygons
+
+## Extracting borough name from the column
+MyData$Borough <- gsub(" London Boro","",LHLB$NAME)
+
+## Ploting the boxplot to understand the price range in different boroughs. 
+Boroughs <- names(table(MyData$Borough))
+NB <- length(Boroughs)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot_1 <- ggplot() + 
+            geom_polygon(data=LB, aes(x=long, y=lat, group=group), colour='black', fill=NA) + 
+            geom_point(data=MyData, aes(x=Easting, y=Northing, color=PriceQuantile), size=1) +
+            scale_color_viridis_d() + 
+            ggtitle("Price Range by Boroughs") +
+            ylab("Latitude") +
+            xlab("Longitude") + 
+            theme(plot.title = element_text(size=12))
+
+
+
+grid.arrange(plot_1)
+```
+
+
+<p align="justify">
+Let us try to understand how the price varies with different features, starting with a variation of house prices across the Boroughs of London. Easting and northing do not show any impact on the range of prices of the houses as can be seen in the above graph. The prices within all ranges are randomly distributed all across London.
+</p>
+
+<p align="justify">
+Similarly, creating a box plot of prices for different boroughs shows that the median price for all the boroughs was almost the same except for the city of London where the median price seems slightly higher as compare to any other borough. Population density too does show any impact on pricing, there is a range of prices for different population density. During the analysis, the price was converted into its logarithmic form to have better visual results though this doesn’t change the interpretation.
+</p>
+
+
+```{r echo=FALSE, fig.align="center", out.height="25%", out.width="80%"}
+## Further using logarithmic response for box plot
+
+plot_2 <- ggplot(data=na.omit(MyData), aes(x=Borough, y=log(Purprice))) + 
+            geom_boxplot(colour="red") + 
+            ggtitle("Price by Boroughs") +
+            ylab("Price (log)") +
+            xlab("") + 
+            theme(axis.text.x = element_text(size=7, angle=90), 
+                  plot.title = element_text(size=11))
+
+
+plot_3 <- ggplot(data= MyData, mapping = aes(x = log(PopnDnsy), y = log(Purprice))) + 
+            geom_point() + 
+            ggtitle("Price by Population Density") + 
+            scale_color_viridis() +
+            ylab("Price (log)") +
+            xlab("Population Denstiy (log)") +
+            theme_minimal() +
+            theme(legend.position="bottom", 
+                  plot.title = element_text(size=11))
+
+
+grid.arrange(plot_2, plot_3, nrow=1, widths=c(7,4, 0.2))
+
+# boxplot(log(Purprice)~Borough,data=MyData,outpch=16,outcol="red",outcex=0.75,xaxt="n", xlab = "", ylab="Price (log)")
+# axis(1,labels=Boroughs,at=1:NB,cex.axis=0.75,las=2)
+# title("Log(Price) by Borough")
+```
+
+<p align="justify">
+Analyzing other features and it’s effect on price variation, some of the obvious findings were that the price of the house increases with the floor area. The house with central heating does have a slightly higher price and if we consider the garage with floor area it does not shows much of an impact but if considered garage space with different types of houses the median price increases with garage space. The detached house shows a higher median price with all kinds of garage space as compared to other types of houses. And within a specific type of house, it shows the higher median price for more garage space. 
+</p>
+
+
+```{r echo=FALSE, fig.align="center", out.height="25%", out.width="80%"}
+
+
+plot_4 <- ggplot(data = MyData, mapping = aes(x = FlorArea, y = log(Purprice), color = CenHeat)) +
+            geom_point(alpha = 0.3, size=0.75,  position = position_jitter()) +
+            scale_color_brewer(palette = "Set1") +
+            geom_smooth(method="loess", se=F) + 
+            scale_x_continuous(breaks=seq(0,300,50),labels=abs(seq(0,300,50))) +
+            theme_bw() +
+            scale_y_continuous(labels = scales::comma) +
+            ylab("Price (log)") +
+            xlab("Floor Area") +
+            ggtitle("Price by Floor Area based on Central Heating") +
+            theme(legend.position="bottom", plot.title = element_text(size=10))
+
+
+plot_5 <- ggplot(data= MyData, mapping = aes(x = Type, y = log(Purprice), color=Garage)) +
+            geom_boxplot() +
+            ggtitle("Price by Type with Garages Space") + 
+            ylab("Price (log)") +
+            xlab("Type") +
+            theme(legend.position = "none",
+              axis.text.x = element_text(angle=90),
+              plot.title = element_text(size=10))
+
+
+
+plot_6 <- ggplot(data= MyData, mapping = aes(x = FlorArea, y = log(Purprice), color=Garage)) + 
+            geom_point(alpha = 0.3, size=0.75,  position = position_jitter()) + 
+            scale_color_brewer(palette = "Set1") +
+            geom_smooth(method="loess", se=F) + 
+            scale_x_continuous(breaks=seq(0,300,50),labels=abs(seq(0,300,50))) + 
+            ylab("Price (log)") +
+            xlab("Floor Area") +
+            ggtitle("Price by Floor Area based on Garages Space") +
+            theme(legend.position="bottom",
+                  plot.title = element_text(size=10))
+
+grid.arrange(arrangeGrob(plot_4, plot_6), plot_5, ncol=2, nrow=1)
+
+```
+
+
+<p align="justify">
+The median price goes higher with the number of bedrooms and having more than 2 baths increases the price further, but there were a lot of similarities in the price of the house with up to 3 bedrooms. Though 75% of houses with 4 or 5 bedrooms have a higher price rate than 75% of houses with 3 or fewer bedrooms. Considering the age of the house, the price generally decreases with age as can be seen in the heat map below and as indicated before, with more no of the bedroom the price increases relatively. Though there was an exception for the houses built before world war 1, the price for every type of house was relatively higher as compared to the houses built after world war 1. This may be because those houses are categorized as historical buildings and thus cost more. Further, Detached houses have a higher price, and Bungalow has a lower price as compared to other types irrespective of age except for houses before world war 1.
+</p>
+
+```{r echo=FALSE, fig.align="center", out.height="25%", out.width="80%"}
+
+
+
+plot_7 <- ggplot(data = MyData, mapping = aes(x = Bedrooms, y = log(Purprice), colour = BathTwo)) +
+            geom_jitter(aes(colour=BathTwo)) +
+            geom_boxplot(alpha=0,colour="black") +
+            theme_bw() +
+            ggtitle("Price by Bedrooms with Baths(one/more)") +
+            ylab("Price (log)") +
+            xlab("Bedrooms") + 
+            theme(axis.text.x = element_text(size=7, angle=90),
+                  plot.title = element_text(size=10))
+
+plot_8 <- ggplot(data = MyData, mapping = aes(x = Type, y = Purprice, fill = Age)) +
+            geom_bar(stat = "identity", position = "dodge") +
+            scale_fill_brewer(palette = "Dark2") +
+            ggtitle("Price by Type & Age") +
+            scale_y_continuous(labels = scales::comma) +
+            theme_bw() +
+            xlab("Type") +
+            ylab("Price") +
+            theme(axis.text.x = element_text(size=7, angle=90), 
+                  plot.title = element_text(size=10)) 
+
+plot_9 <- ggplot(data = MyData, aes(x=Bedrooms, y=Age, fill= log(Purprice))) + 
+            geom_tile() + 
+            scale_fill_distiller(palette = "Reds")+
+            ggtitle("Price by Age & Number of Bedrooms") + 
+            theme(legend.position="bottom", 
+                  axis.text.x = element_text(size=7, angle=90),
+                  plot.title = element_text(size=10))
+
+grid.arrange(arrangeGrob(plot_7, plot_8), plot_9,   ncol=2, nrow=1)
+
+```
+
+<p align="justify">
+There are very few new properties and no new property with five bedrooms. With freehold as the bedroom increase the new property price increases but this was not the case with old properties. The price of 3 bedrooms was very high in case of a lease maybe because it was a historical building before world war 1.Potential buyers prefer old properties as compared to new. As there are very few new properties for the given years, more statistical analysis will be required to predict the purchase price when taking property type into account.
+</p>
+
+```{r echo=FALSE, fig.align="center", out.height="25%", out.width="80%"}
+
+ggplot(data = MyData, mapping = aes(x = Bedrooms, y = Purprice, fill = NewPropD)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  facet_wrap(.~Tenfree)
+
+```
+
+
+
+<p align="justify">
+The proportion of skill type or employment status of a person in a house doesn't affect the price of the house much. For the higher proportion of professionals in a leased house do show some decrease in price while for the proportion of unskilled heads or for retired residents the price is randomly distributed, showing no effect on the price of a house. But surely the freehold houses have generally higher prices are compared to leased houses.
+</p>
+
+
+```{r echo=FALSE, fig.align="center", out.height="25%", out.width="80%"}
+
+## Change the out of range value to be 0
+MyData$ProfPct <- ifelse((MyData$ProfPct > 100 | MyData$ProfPct < 0), 0 , MyData$ProfPct)
+MyData$UnskPct <- ifelse((MyData$UnskPct > 100 | MyData$UnskPct < 0), 0 , MyData$UnskPct)
+MyData$RetiPct <- ifelse((MyData$RetiPct > 100 | MyData$RetiPct < 0), 0 , MyData$RetiPct)
+
+plot_10 <- ggplot(MyData, aes(x = ProfPct , y=log(Purprice), color=Tenfree)) +
+              geom_point(alpha = 0.5, size=1,  position = position_jitter()) +
+              geom_smooth(method="loess", se=F) +
+              ggtitle("Proportion of Professional Head") +
+              ylab("Price (log)") +
+              xlab("Proportion") + 
+              theme(legend.position="bottom",
+                    plot.title = element_text(size=8))
+
+plot_11 <- ggplot(MyData, aes(x = UnskPct , y=log(Purprice), color=Tenfree)) +
+              geom_point(alpha = 0.5, size=1,  position = position_jitter()) +
+              geom_smooth(method="loess", se=F) +
+              ggtitle("Proportion of Unskilled Head") +
+              ylab("Price (log)") +
+              xlab("Proportion") + 
+              theme(legend.position="bottom",
+                    plot.title = element_text(size=8))
+  
+plot_12 <- ggplot(MyData, aes(x = RetiPct , y=log(Purprice), color=Tenfree)) +
+              geom_point(alpha = 0.5, size=1,  position = position_jitter()) +
+              geom_smooth(method="loess", se=F) +
+              ggtitle("Proportion of Retired Residents") +
+              ylab("Price (log)") +
+              xlab("Proportion") + 
+              theme(legend.position="bottom",
+                    plot.title = element_text(size=8))
+
+grid.arrange(plot_10, plot_11, plot_12, nrow=1)
+
+```
+
+
+
+
+
+
+#### Data Modeling
+
+<p align="justify">
+After analyzing the data through visualization, few of the features like floor area, number of bedrooms, age of a house, type of house, a house with a central system, garage space showed some impact on the price of the house while others didn't. Some models was created using these features. But before creating the model, the dataset was split into a training set and test set to test the performance of the model on test data. The split ratio was 70-30, i.e using 70% of the data for training the model and 30% of the data for testing. Linear regression is a basic model that uses the ordinary least square method to estimates its coefficient was created with the features floor area, the number of bedrooms, age of the house, its type to predict the price of the house. It gives a Residual standard error equals to 29330 and Adjusted R-squared equals 0.53 on training data. This indicates the model doesn't fit the data well. Further, RSME (Root Mean Square Error) for training and test data are 29308 and 27139 respectively. Another linear model was created by adding some interaction terms between Bedrooms & Age but it gave almost the same result.
+</p>
+
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+
+## Spliting data into training & test set
+
+set.seed(123)
+split = sample.split(MyData$Purprice, SplitRatio = 0.7)
+training_set = subset(MyData, split == TRUE)
+test_set = subset(MyData, split == FALSE)
+
+#glimpse(training_set)
+```
+
+
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+
+## Fitting a linear regression the model with few important features
+
+lm_1<-lm(Purprice ~ FlorArea + Bedrooms + Age + Type, data = training_set)
+summary(lm_1) 
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE,results='hold'}
+cat("Model : ")
+lm_1$call
+
+training_rmse <- sqrt(mean((predict(lm_1)-training_set$Purprice)^2))
+ 
+pred <- predict(lm_1,newdata = test_set)
+test_rmse <- sqrt(mean((pred - test_set$Purprice)^2))
+ 
+cat(sprintf("\nRMSE for training data : %d & test data : %d \n", as.integer(training_rmse), as.integer(test_rmse)))
+
+```
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+
+lm_2<-lm(Purprice ~ FlorArea + Bedrooms + Age + Type + Bedrooms*Age, data = training_set)
+summary(lm_2)
+
+#seems that above regression is not fitting the data
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE,results='hold'}
+cat("Model : ")
+lm_2$call
+
+training_rmse <- sqrt(mean((predict(lm_2)-training_set$Purprice)^2))
+ 
+pred <- predict(lm_2,newdata = test_set)
+test_rmse <- sqrt(mean((pred - test_set$Purprice)^2))
+ 
+cat(sprintf("\nRMSE for training data : %d & test data : %d \n", as.integer(training_rmse), as.integer(test_rmse)))
+
+
+```
+
+<p align="justify">
+As there is a high dimensional data, ridge regression was used to down weight the contribution of the predictors which are not contributing much towards the regression instead of removing predictors from the model. The parameters would be shrunk towards zero. Ridge regression seeks parameter values that minimize the value of mean squared error along with a penalty term(lambda) that shrinks the parameter effect and is called an l2 norm. As per the model the lambda value is chosen by cross-validation from a grid of values set by the user which in our case is 2992.34. Root mean square error for the rigid regression model is equals to 26936 on the test set so the model doesn’t seem to work well with ridge even after regularization.
+</p>
+<p align="justify">
+Similar regression, lasso regression was used where instead of l2 norm, l1 norm is used for a penalty. This involves automatic variable selection and forces some of the coefficients of the parameters to be zero. So, the value for lambda is 53.52 as per cross-validation and the root means square error for the test set seems to be high that is 27121, it is higher than root means square error for ridge regression.
+</p>
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hold'}
+
+set.seed(111)
+
+x <- model.matrix(Purprice ~ ., data=training_set[ , c(3, 8,16,17,19)])
+y <- as.matrix(training_set$Purprice)
+
+grid <- 10^seq(-3, 5, length = 100)
+ridge.fit <- glmnet(x,y,alpha=0,lambda = grid) # for ridge
+
+cv.out <- cv.glmnet(x,y,alpha=0)
+
+cat(sprintf("\nLambda value for rigid regression : %.2f \n", cv.out$lambda.min))
+
+ridge.fit <- glmnet(x,y,alpha=0, lambda = cv.out$lambda.min)
+
+testx <- model.matrix(Purprice ~ ., data=test_set[ , c(3, 8,16,17,19)])
+
+ridge.pred <- predict(ridge.fit, newx = testx)
+test_rmse <-sqrt(mean((ridge.pred- test_set$Purprice)^2))
+
+cat(sprintf("\nRMSE for rigid regression on test data : %d \n", as.integer(test_rmse)))
+
+```
+
+
+```{r echo=FALSE, results='hold', message=FALSE, warning=FALSE}
+
+
+#lasso
+lasso.fit <- glmnet(x,y,alpha=1,lambda = grid) # for lasso
+#plot(lasso.fit, xvar="norm")
+
+cv.out <- cv.glmnet(x,y,alpha=1)
+
+cat(sprintf("\nLambda value for lasso regression : %.2f \n", cv.out$lambda.min))
+
+lasso.fit <- glmnet(x,y,alpha=1,lambda = cv.out$lambda.min)
+
+lasso.pred <- predict(lasso.fit, newx = testx)
+test_rmse <-sqrt(mean((lasso.pred - test_set$Purprice)^2))
+
+cat(sprintf("\nRMSE for lasso regression on test data : %d \n", as.integer(test_rmse)))
+```
+
+
+<p align="justify">
+
+Random forest is an ensemble learning model, one of the most used models for these kinds of predictions. The default value for the number of trees in the random forest is 500 and the node size is 1. Location-based details are removed from the dataset before creating a random forest model as it has no major effect on the price of houses. The model does perform better than previous models with RSME (Root Mean Square Error) for training and test data as 27902 and 26396 respectively. The five most significant features as per this model are floor area,houses with central heating, number of bedrooms, age & type of house.
+
+</p>
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+
+## Removing the location details from the data set as it is not making much of a impact. 
+training_set <- training_set[-c(1,2,20)]
+test_set <- test_set[-c(1,2,20)] 
+
+```
+
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE,results='hold'}
+#Fitting Random Forest with default values of parameter
+rfmodel <- randomForest(Purprice ~ . ,data = training_set,importance = TRUE)
+training_rmse <- sqrt(mean((predict(rfmodel)-training_set$Purprice)^2))
+
+pred <- predict(rfmodel,newdata = test_set)
+test_rmse <- sqrt(mean((pred - test_set$Purprice)^2))
+
+cat(sprintf("RMSE with random forest for training data : %d & test data : %d \n", as.integer(training_rmse), as.integer(test_rmse)))
+
+varImpPlot(rfmodel)
+
+```
+
+
+#### Parameter tuning 
+
+<p align="justify">
+
+The random forest model can be further tunned to produce an optimal model. After comparing different models with different combination of number of trees and node size,  number of tree equals to 1000 and node size equals to 20 gives the best RMSE of 25942. 
+
+</p>
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hold'}
+
+## let us try different no of trees and node size for better accuracy
+
+# ntree <- c(1000, 1500, 2000, 2500)
+# nsize <- c(10,15,20)
+# min_rmse <- Inf
+# ns_min <- 0
+# nt_min <- 0
+# for (t in ntree)
+# {
+#   for (s in nsize)
+#   {
+#     rfmodel <- randomForest(Purprice ~.,data = training_set, ntree=t, nsize=s, importance=TRUE)
+#     training_rmse <- sqrt(mean((predict(rfmodel)-training_set$Purprice)^2))
+# 
+#     pred <- predict(rfmodel,newdata = test_set)
+#     test_rmse <- sqrt(mean((pred - test_set$Purprice)^2))
+# 
+#     if(test_rmse < min_rmse) {
+#       ns_min = s
+#       nt_min = t
+#       min_rmse = test_rmse
+#     }
+#     ## Printing the RMSE for training & test data with different value of ntree & node size
+#     cat(sprintf("RMSE (with ntree= %d & ndsize = %d) for training data : %d & test data : %d \n", t, s, as.integer(training_rmse), as.integer(test_rmse)))
+#   }
+# }
+# 
+# ## Printing the best value for ntree & node size
+# cat(sprintf("\nntree= %d & ndsize = %d for with minumum RMSE : %d", nt_min, ns_min, min_rmse))
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align= "center", fig.height=8,fig.width=15}
+knitr::include_graphics('../output/tuning_1.png')
+```
+
+
+### Conclusion
+
+<p align="justify">
+
+Floor Area certainly is a major feature to impact the price. More the floor area higher the price. The number of bedrooms, when it is 4 or 5 have a higher impact on price. New houses have higher prices except for some historical buildings like houses from before world war 1. Location wise, house with all price range is spread across the borough of London, also the median price for all the boroughs is almost the same. The detached house is more expensive as compared to other types and Bangalow is least expensive irrespective of age except for house before the world was 1. Having central heating and garage space does add on the price of the house but garage space doesn't have any major impact. Freehold houses especially old property have higher prices as compare to leased ones. The proportion of skill type or employment status in a house doesn’t affect the price of the house much.
+
+</p>
+
+
+
+
+
