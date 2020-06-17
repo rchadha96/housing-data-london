@@ -32,5 +32,14 @@ with different combination of number of trees and node size, number of tree equa
 equals to 20 gives the best RMSE of 25942.
 ![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(5).png)
 
-
+# Conclusion
+Floor Area certainly is a major feature to impact the price. More the floor area higher the price. The number of
+bedrooms, when it is 4 or 5 have a higher impact on price. New houses have higher prices except for some
+historical buildings like houses from before world war 1. Location wise, house with all price range is spread
+across the borough of London, also the median price for all the boroughs is almost the same. The detached
+house is more expensive as compared to other types and Bangalow is least expensive irrespective of age
+except for house before the world was 1. Having central heating and garage space does add on the price of
+the house but garage space doesn’t have any major impact. Freehold houses especially old property have
+higher prices as compare to leased ones. The proportion of skill type or employment status in a house doesn’t
+affect the price of the house much.
 
