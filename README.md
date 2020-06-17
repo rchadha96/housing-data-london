@@ -9,7 +9,7 @@ with or without a central heating system and different types of garage space. Al
 on the pricing of a house along with its location or which borough it is in. 
 
 # EDA
-![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(1).png){:height="50%" width="50%"}
+![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(1).png)
 ![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(2).png)
 
 # Data Modeling
