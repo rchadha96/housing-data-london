@@ -1,4 +1,6 @@
-# housing-data-london
+# London Housing Price Analysis 
+Project Goal: To find the best group to predictors of housing prices of Greater London using R 
+
 # Introduction
 The objective of this project was to analyze the price of a house across the Boroughs of London. The analysis involves using visualization to understand the effect of different features on the price of a house and creating an optimal model to predict the price of a house. 
 
