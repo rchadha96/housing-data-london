@@ -20,7 +20,7 @@ But before creating the model, the dataset was split into a training set and tes
 Random forest is an ensemble learning model, one of the most used models for these kinds of predictions.
 The default value for the number of trees in the random forest is 500 and the node size is 1. Location-based details are removed from the dataset before creating a random forest model as it has no major effect on the price of houses. The five most significant features as per this model are floor area,houses with central heating, number of bedrooms, age & type of house.
 
-![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(4).png)
+![image3](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(4).png)
 
 ## Parameter tuning
 The random forest model can be further tunned to produce an optimal model. After comparing different models with different combination of number of trees and node size, number of tree equals to 1000 and node size equals to 20 gives the best RMSE of 25942.
