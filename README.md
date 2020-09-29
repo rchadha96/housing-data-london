@@ -9,7 +9,7 @@ As per the data, houses can be as old as 106+ years (preworld war 1) and ranging
 # EDA
 ![image1](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(1).png)
 
-![](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(2).png)
+![image2](https://github.com/rchadha96/housing-data-london/blob/master/images/EDA%20(2).png)
 
 # Data Modeling
 After analyzing the data through visualization, few of the features like floor area, number of bedrooms, age of a house, type of house, a house with a central system, garage space showed some impact on the price of the house while others didn’t. Some models was created using these features.
